@@ -1,16 +1,19 @@
-// File: src/server.ts
+
 import express from "express";
 
 const app = express();
-const PORT=8000
+const PORT = 8000;
 
 
-// root route
+
+app.use(express.json());
+
+
+
 app.get("/", (req, res) => {
-    res.json({ message: "Hello Welcome to classroom API "});
+  res.send("Backend server is running!");
 });
 
-
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });
