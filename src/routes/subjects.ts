@@ -72,23 +72,7 @@ router.get("/", async (req, res) => {
     }
 });
 
-router.post("/", async (req, res) => {
-    try {
-        const { departmentId, name, code, description } = req.body;
 
-        const [createdSubject] = await db
-            .insert(subjects)
-            .values({ departmentId, name, code, description })
-            .returning({ id: subjects.id });
-
-        if (!createdSubject) throw Error;
-
-        res.status(201).json({ data: createdSubject });
-    } catch (error) {
-        console.error("POST /subjects error:", error);
-        res.status(500).json({ error: "Failed to create subject" });
-    }
-});
 
 
 export default router;
