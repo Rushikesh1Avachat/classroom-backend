@@ -1,10 +1,11 @@
+import securityMiddleware from "./middleware/security.js";
+
 import('apminsight')
     .then(({ default: AgentAPI }) => AgentAPI.config())
     .catch(() => console.log('APM not available in this environment'));
 import express from "express";
 import subjectsRouter from "./routes/subjects.js";
 import cors from "cors";
-import securityMiddleware from "./middleware/security";
 import {toNodeHandler} from "better-auth/node";
 import {auth} from "./lib/auth";
 
