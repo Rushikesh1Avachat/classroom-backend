@@ -1,6 +1,4 @@
-// import securityMiddleware from "./middleware/security.js";
 
-import {auth} from "./lib/auth.js";
 
 import('apminsight')
     .then(({ default: AgentAPI }) => AgentAPI.config())
@@ -9,6 +7,8 @@ import express from "express";
 import subjectsRouter from "./routes/subjects.js";
 import cors from "cors";
 import {toNodeHandler} from "better-auth/node";
+import securityMiddleware from "./middleware/security.js";
+import {auth} from "./lib/auth.js";
 
 const app = express();
 const PORT = 8000;
@@ -16,7 +16,7 @@ const PORT = 8000;
 
 app.all('/api/auth/*splat', toNodeHandler(auth));
 app.use(express.json());
-// app.use(securityMiddleware);
+app.use(securityMiddleware);
 
 
 app.use(
