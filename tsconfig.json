@@ -4,9 +4,9 @@
     "target": "ES2022",
     "lib": ["ES2022"],
 
-    /* Node ESM */
-    "module": "ES2022",
-    "moduleResolution": "node",
+    /* ✅ Node ESM (CRITICAL FIX) */
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
 
     /* Project structure */
     "rootDir": "src",
@@ -30,5 +30,5 @@
     /* Environment types */
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src/**/*"]
 }
