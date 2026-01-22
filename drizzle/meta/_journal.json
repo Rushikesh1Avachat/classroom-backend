@@ -8,6 +8,13 @@
       "when": 1768975700962,
       "tag": "0000_fixed_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1769056959200,
+      "tag": "0001_grey_nomad",
+      "breakpoints": true
     }
   ]
 }

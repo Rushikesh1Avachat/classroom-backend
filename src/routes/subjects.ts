@@ -70,6 +70,22 @@ router.get("/", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch subjects" });
     }
 });
+router.post("/", async (req, res) => {
+    try {
+        const { code, name, description } = req.body;
 
+        const [createdDepartment] = await db
+            .insert(departments)
+            .values({ code, name, description })
+            .returning({ id: departments.id });
+
+        if (!createdDepartment) throw Error;
+
+        res.status(201).json({ data: createdDepartment });
+    } catch (error) {
+        console.error("POST /departments error:", error);
+        res.status(500).json({ error: "Failed to create department" });
+    }
+});
 export default router;
 
