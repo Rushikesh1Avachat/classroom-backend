@@ -1,11 +1,11 @@
-// import express from "express";
+import express from "express";
 // import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
 //
 // import { db } from "../db/index.js";
-// import { classes, departments, enrollments, subjects, user } from "../db/schema/index.js";
-//
-// const router = express.Router();
-//
+// import { classes, departments, enrollments, subjects, } from "../db/schema/index.js";
+
+const router = express.Router();
+
 // // Get all classes with optional search, subject, teacher filters, and pagination
 // router.get("/", async (req, res) => {
 //   try {
@@ -78,7 +78,7 @@
 //     res.status(500).json({ error: "Failed to fetch classes" });
 //   }
 // });
-//
+
 // router.post("/", async (req, res) => {
 //   try {
 //     const {
@@ -116,7 +116,7 @@
 //     res.status(500).json({ error: "Failed to create class" });
 //   }
 // });
-//
+
 // // Get class details with counts
 // router.get("/:id", async (req, res) => {
 //   try {
@@ -248,5 +248,5 @@
 //     res.status(500).json({ error: "Failed to fetch class users" });
 //   }
 // });
-//
-// export default router;
+
+export default router;
