@@ -2,6 +2,7 @@
 import express from "express";
 import subjectsRouter from "./routes/subjects.js";
 import cors from "cors";
+import securityMiddleware from "./middleware/security";
 
 const app = express();
 const PORT = 8000;
@@ -9,6 +10,9 @@ const PORT = 8000;
 
 
 app.use(express.json());
+app.use(securityMiddleware);
+
+
 app.use(
     cors({
         origin: process.env.FRONTEND_URL, // React app URL
