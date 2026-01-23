@@ -1,252 +1,400 @@
 import express from "express";
-// import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
-//
-// import { db } from "../db/index.js";
-// import { classes, departments, enrollments, subjects, } from "../db/schema/index.js";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+
+import { db } from "../db";
+import { classes, enrollments, user } from "../db/schema";
+import { getClassById, getClassByInviteCode } from "../controllers/classes";
+import { getSubjectById } from "../controllers/subjects";
+import { getUserById } from "../controllers/users";
+import { parseRequest } from "../lib/validation";
+// import { authenticate, authorizeRoles } from "../middleware/auth-middleware";
+import {
+    classCreateSchema,
+    classIdParamSchema,
+    classInviteParamSchema,
+    classListQuerySchema,
+    classUpdateSchema,
+    classUsersQuerySchema,
+} from "../validation/classes";
 
 const router = express.Router();
 
-// // Get all classes with optional search, subject, teacher filters, and pagination
-// router.get("/", async (req, res) => {
-//   try {
-//     const { search, subject, teacher, page = 1, limit = 10 } = req.query;
-//
-//     const currentPage = Math.max(1, +page);
-//     const limitPerPage = Math.max(1, +limit);
-//     const offset = (currentPage - 1) * limitPerPage;
-//
-//     const filterConditions = [];
-//
-//     if (search) {
-//       filterConditions.push(
-//         or(
-//           ilike(classes.name, `%${search}%`),
-//           ilike(classes.inviteCode, `%${search}%`)
-//         )
-//       );
-//     }
-//
-//     if (subject) {
-//       filterConditions.push(ilike(subjects.name, `%${subject}%`));
-//     }
-//
-//     if (teacher) {
-//       filterConditions.push(ilike(user.name, `%${teacher}%`));
-//     }
-//
-//     const whereClause =
-//       filterConditions.length > 0 ? and(...filterConditions) : undefined;
-//
-//     const countResult = await db
-//       .select({ count: sql<number>`count(*)` })
-//       .from(classes)
-//       .leftJoin(subjects, eq(classes.subjectId, subjects.id))
-//       .leftJoin(user, eq(classes.teacherId, user.id))
-//       .where(whereClause);
-//
-//     const totalCount = countResult[0]?.count ?? 0;
-//
-//     const classesList = await db
-//       .select({
-//         ...getTableColumns(classes),
-//         subject: {
-//           ...getTableColumns(subjects),
-//         },
-//         teacher: {
-//           ...getTableColumns(user),
-//         },
-//       })
-//       .from(classes)
-//       .leftJoin(subjects, eq(classes.subjectId, subjects.id))
-//       .leftJoin(user, eq(classes.teacherId, user.id))
-//       .where(whereClause)
-//       .orderBy(desc(classes.createdAt))
-//       .limit(limitPerPage)
-//       .offset(offset);
-//
-//     res.status(200).json({
-//       data: classesList,
-//       pagination: {
-//         page: currentPage,
-//         limit: limitPerPage,
-//         total: totalCount,
-//         totalPages: Math.ceil(totalCount / limitPerPage),
-//       },
-//     });
-//   } catch (error) {
-//     console.error("GET /classes error:", error);
-//     res.status(500).json({ error: "Failed to fetch classes" });
-//   }
-// });
+// Get all classes with optional filters and pagination
+router.get(
+    "/",
 
-// router.post("/", async (req, res) => {
-//   try {
-//     const {
-//       name,
-//       teacherId,
-//       subjectId,
-//       capacity,
-//       description,
-//       status,
-//       bannerUrl,
-//       bannerCldPubId,
-//     } = req.body;
-//
-//     const [createdClass] = await db
-//       .insert(classes)
-//       .values({
-//         subjectId,
-//         inviteCode: Math.random().toString(36).substring(2, 9),
-//         name,
-//         teacherId,
-//         bannerCldPubId,
-//         bannerUrl,
-//         capacity,
-//         description,
-//         schedules: [],
-//         status,
-//       })
-//       .returning({ id: classes.id });
-//
-//     if (!createdClass) throw Error;
-//
-//     res.status(201).json({ data: createdClass });
-//   } catch (error) {
-//     console.error("POST /classes error:", error);
-//     res.status(500).json({ error: "Failed to create class" });
-//   }
-// });
+    /* authorizeRoles("admin", "teacher", "student"), */
+    async (req, res) => {
+        try {
+            const {
+                search,
+                subjectId,
+                teacherId,
+                status,
+                page = 1,
+                limit = 10,
+            } = parseRequest(classListQuerySchema, req.query);
 
-// // Get class details with counts
-// router.get("/:id", async (req, res) => {
-//   try {
-//     const classId = Number(req.params.id);
-//
-//     if (!Number.isFinite(classId)) {
-//       return res.status(400).json({ error: "Invalid class id" });
-//     }
-//
-//     const [classDetails] = await db
-//       .select({
-//         ...getTableColumns(classes),
-//         subject: {
-//           ...getTableColumns(subjects),
-//         },
-//         department: {
-//           ...getTableColumns(departments),
-//         },
-//         teacher: {
-//           ...getTableColumns(user),
-//         },
-//       })
-//       .from(classes)
-//       .leftJoin(subjects, eq(classes.subjectId, subjects.id))
-//       .leftJoin(departments, eq(subjects.departmentId, departments.id))
-//       .leftJoin(user, eq(classes.teacherId, user.id))
-//       .where(eq(classes.id, classId));
-//
-//     if (!classDetails) {
-//       return res.status(404).json({ error: "Class not found" });
-//     }
-//
-//     res.status(200).json({ data: classDetails });
-//   } catch (error) {
-//     console.error("GET /classes/:id error:", error);
-//     res.status(500).json({ error: "Failed to fetch class details" });
-//   }
-// });
-//
-// // List users in a class by role with pagination
-// router.get("/:id/users", async (req, res) => {
-//   try {
-//     const classId = Number(req.params.id);
-//     const { role, page = 1, limit = 10 } = req.query;
-//
-//     if (!Number.isFinite(classId)) {
-//       return res.status(400).json({ error: "Invalid class id" });
-//     }
-//
-//     if (role !== "teacher" && role !== "student") {
-//       return res.status(400).json({ error: "Invalid role" });
-//     }
-//
-//     const currentPage = Math.max(1, +page);
-//     const limitPerPage = Math.max(1, +limit);
-//     const offset = (currentPage - 1) * limitPerPage;
-//
-//     const baseSelect = {
-//       id: user.id,
-//       name: user.name,
-//       email: user.email,
-//       emailVerified: user.emailVerified,
-//       image: user.image,
-//       role: user.role,
-//       imageCldPubId: user.imageCldPubId,
-//       createdAt: user.createdAt,
-//       updatedAt: user.updatedAt,
-//     };
-//
-//     const groupByFields = [
-//       user.id,
-//       user.name,
-//       user.email,
-//       user.emailVerified,
-//       user.image,
-//       user.role,
-//       user.imageCldPubId,
-//       user.createdAt,
-//       user.updatedAt,
-//     ];
-//
-//     const countResult =
-//       role === "teacher"
-//         ? await db
-//             .select({ count: sql<number>`count(distinct ${user.id})` })
-//             .from(user)
-//             .leftJoin(classes, eq(user.id, classes.teacherId))
-//             .where(and(eq(user.role, role), eq(classes.id, classId)))
-//         : await db
-//             .select({ count: sql<number>`count(distinct ${user.id})` })
-//             .from(user)
-//             .leftJoin(enrollments, eq(user.id, enrollments.studentId))
-//             .where(and(eq(user.role, role), eq(enrollments.classId, classId)));
-//
-//     const totalCount = countResult[0]?.count ?? 0;
-//
-//     const usersList =
-//       role === "teacher"
-//         ? await db
-//             .select(baseSelect)
-//             .from(user)
-//             .leftJoin(classes, eq(user.id, classes.teacherId))
-//             .where(and(eq(user.role, role), eq(classes.id, classId)))
-//             .groupBy(...groupByFields)
-//             .orderBy(desc(user.createdAt))
-//             .limit(limitPerPage)
-//             .offset(offset)
-//         : await db
-//             .select(baseSelect)
-//             .from(user)
-//             .leftJoin(enrollments, eq(user.id, enrollments.studentId))
-//             .where(and(eq(user.role, role), eq(enrollments.classId, classId)))
-//             .groupBy(...groupByFields)
-//             .orderBy(desc(user.createdAt))
-//             .limit(limitPerPage)
-//             .offset(offset);
-//
-//     res.status(200).json({
-//       data: usersList,
-//       pagination: {
-//         page: currentPage,
-//         limit: limitPerPage,
-//         total: totalCount,
-//         totalPages: Math.ceil(totalCount / limitPerPage),
-//       },
-//     });
-//   } catch (error) {
-//     console.error("GET /classes/:id/users error:", error);
-//     res.status(500).json({ error: "Failed to fetch class users" });
-//   }
-// });
+            const filterConditions = [];
+
+            const currentPage = Math.max(1, +page);
+            const limitPerPage = Math.max(1, +limit);
+            const offset = (currentPage - 1) * limitPerPage;
+
+            if (search) {
+                filterConditions.push(
+                    or(
+                        ilike(classes.name, `%${search}%`),
+                        ilike(classes.inviteCode, `%${search}%`)
+                    )
+                );
+            }
+
+            if (subjectId) {
+                filterConditions.push(eq(classes.subjectId, subjectId));
+            }
+
+            if (teacherId) {
+                filterConditions.push(eq(classes.teacherId, teacherId));
+            }
+
+            if (status) {
+                filterConditions.push(eq(classes.status, status));
+            }
+
+            const whereClause =
+                filterConditions.length > 0 ? and(...filterConditions) : undefined;
+
+            const countResult = await db
+                .select({ count: sql<number>`count(*)` })
+                .from(classes)
+                .where(whereClause);
+
+            const totalCount = countResult[0]?.count ?? 0;
+
+            const classesList = await db
+                .select()
+                .from(classes)
+                .where(whereClause)
+                .orderBy(desc(classes.createdAt))
+                .limit(limitPerPage)
+                .offset(offset);
+
+            res.status(200).json({
+                data: classesList,
+                pagination: {
+                    page: currentPage,
+                    limit: limitPerPage,
+                    total: totalCount,
+                    totalPages: Math.ceil(totalCount / limitPerPage),
+                },
+            });
+        } catch (error) {
+            console.error("GET /classes error:", error);
+            res.status(500).json({ error: "Failed to fetch classes" });
+        }
+    }
+);
+
+// Get class by invite code
+router.get(
+    "/invite/:code",
+
+    /* authorizeRoles("admin", "teacher", "student"), */
+    async (req, res) => {
+        try {
+            const { code } = parseRequest(classInviteParamSchema, req.params);
+
+            const classRecord = await getClassByInviteCode(code);
+
+            if (!classRecord)
+                return res.status(404).json({ error: "Class not found" });
+
+            res.status(200).json({ data: classRecord });
+        } catch (error) {
+            console.error("GET /classes/invite/:code error:", error);
+            res.status(500).json({ error: "Failed to fetch class" });
+        }
+    }
+);
+
+// List users in a class by role with pagination
+router.get(
+    "/:id/users",
+
+    /* authorizeRoles("admin", "teacher", "student"), */
+    async (req, res) => {
+        try {
+            const { id: classId } = parseRequest(classIdParamSchema, req.params);
+            const {
+                role,
+                page = 1,
+                limit = 10,
+            } = parseRequest(classUsersQuerySchema, req.query);
+
+            const currentPage = Math.max(1, +page);
+            const limitPerPage = Math.max(1, +limit);
+            const offset = (currentPage - 1) * limitPerPage;
+
+            const baseSelect = {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                emailVerified: user.emailVerified,
+                image: user.image,
+                role: user.role,
+                imageCldPubId: user.imageCldPubId,
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt,
+            };
+
+            const groupByFields = [
+                user.id,
+                user.name,
+                user.email,
+                user.emailVerified,
+                user.image,
+                user.role,
+                user.imageCldPubId,
+                user.createdAt,
+                user.updatedAt,
+            ];
+
+            const countResult =
+                role === "teacher"
+                    ? await db
+                        .select({ count: sql<number>`count(distinct ${user.id})` })
+                        .from(user)
+                        .leftJoin(classes, eq(user.id, classes.teacherId))
+                        .where(and(eq(user.role, role), eq(classes.id, classId)))
+                    : await db
+                        .select({ count: sql<number>`count(distinct ${user.id})` })
+                        .from(user)
+                        .leftJoin(enrollments, eq(user.id, enrollments.studentId))
+                        .where(
+                            and(eq(user.role, role), eq(enrollments.classId, classId))
+                        );
+
+            const totalCount = countResult[0]?.count ?? 0;
+
+            const usersList =
+                role === "teacher"
+                    ? await db
+                        .select(baseSelect)
+                        .from(user)
+                        .leftJoin(classes, eq(user.id, classes.teacherId))
+                        .where(and(eq(user.role, role), eq(classes.id, classId)))
+                        .groupBy(...groupByFields)
+                        .orderBy(desc(user.createdAt))
+                        .limit(limitPerPage)
+                        .offset(offset)
+                    : await db
+                        .select(baseSelect)
+                        .from(user)
+                        .leftJoin(enrollments, eq(user.id, enrollments.studentId))
+                        .where(and(eq(user.role, role), eq(enrollments.classId, classId)))
+                        .groupBy(...groupByFields)
+                        .orderBy(desc(user.createdAt))
+                        .limit(limitPerPage)
+                        .offset(offset);
+
+            res.status(200).json({
+                data: usersList,
+                pagination: {
+                    page: currentPage,
+                    limit: limitPerPage,
+                    total: totalCount,
+                    totalPages: Math.ceil(totalCount / limitPerPage),
+                },
+            });
+        } catch (error) {
+            console.error("GET /classes/:id/users error:", error);
+            res.status(500).json({ error: "Failed to fetch class users" });
+        }
+    }
+);
+
+// Get class by ID
+router.get(
+    "/:id",
+    /* authorizeRoles("admin", "teacher", "student"), */
+    async (req, res) => {
+        try {
+            const { id: classId } = parseRequest(classIdParamSchema, req.params);
+
+            const classRecord = await getClassById(classId);
+
+            if (!classRecord) {
+                return res.status(404).json({ error: "Class not found" });
+            }
+
+            res.status(200).json({ data: classRecord });
+        } catch (error) {
+            console.error("GET /classes/:id error:", error);
+            res.status(500).json({ error: "Failed to fetch class" });
+        }
+    }
+);
+
+// Create class
+router.post(
+    "/",
+
+    /* authorizeRoles("admin", "teacher"), */
+    async (req, res) => {
+        try {
+            const {
+                subjectId,
+                name,
+                teacherId,
+                bannerCldPubId,
+                bannerUrl,
+                capacity,
+                description,
+                status,
+            } = parseRequest(classCreateSchema, req.body);
+
+            const subject = await getSubjectById(subjectId);
+            if (!subject) {
+                return res.status(404).json({ error: "Subject not found" });
+            }
+
+            const teacher = await getUserById(teacherId);
+            if (!teacher) return res.status(404).json({ error: "Teacher not found" });
+
+            let inviteCode: string | undefined;
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+                const candidate = Math.random().toString(36).substring(2, 9);
+                const existingInvite = await getClassByInviteCode(candidate);
+                if (!existingInvite) {
+                    inviteCode = candidate;
+                    break;
+                }
+            }
+
+            if (!inviteCode) {
+                return res
+                    .status(500)
+                    .json({ error: "Failed to generate invite code" });
+            }
+
+            const [createdClass] = await db
+                .insert(classes)
+                .values({
+                    subjectId,
+                    inviteCode,
+                    name,
+                    teacherId,
+                    bannerCldPubId,
+                    bannerUrl,
+                    capacity,
+                    description,
+                    schedules: [],
+                    status,
+                })
+                .returning({ id: classes.id });
+
+            if (!createdClass)
+                return res.status(500).json({ error: "Failed to create class" });
+
+            const classRecord = await getClassById(createdClass.id);
+
+            res.status(201).json({ data: classRecord });
+        } catch (error) {
+            console.error("POST /classes error:", error);
+            res.status(500).json({ error: "Failed to create class" });
+        }
+    }
+);
+
+// Update class
+router.put(
+    "/:id",
+
+    /* authorizeRoles("admin", "teacher"), */
+    async (req, res) => {
+        try {
+            const { id: classId } = parseRequest(classIdParamSchema, req.params);
+            const {
+                subjectId,
+                inviteCode,
+                bannerCldPubId,
+                bannerUrl,
+                capacity,
+                description,
+                name,
+                schedules,
+                status,
+            } = parseRequest(classUpdateSchema, req.body);
+
+            const existingClass = await getClassById(classId);
+            if (!existingClass)
+                return res.status(404).json({ error: "Class not found" });
+
+            if (subjectId) {
+                const subject = await getSubjectById(subjectId);
+                if (!subject)
+                    return res.status(404).json({ error: "Subject not found" });
+            }
+
+            if (inviteCode) {
+                const existingInvite = await getClassByInviteCode(inviteCode);
+
+                if (existingInvite && existingInvite.id !== classId)
+                    return res.status(409).json({ error: "Invite code already exists" });
+            }
+
+            const updateValues: Record<string, unknown> = {};
+
+            for (const [key, value] of Object.entries({
+                subjectId,
+                inviteCode,
+                bannerCldPubId,
+                bannerUrl,
+                capacity,
+                description,
+                name,
+                schedules,
+                status,
+            })) {
+                if (value) updateValues[key] = value;
+            }
+
+            await db.update(classes).set(updateValues).where(eq(classes.id, classId));
+
+            const classRecord = await getClassById(classId);
+
+            res.status(200).json({ data: classRecord });
+        } catch (error) {
+            console.error("PUT /classes/:id error:", error);
+            res.status(500).json({ error: "Failed to update class" });
+        }
+    }
+);
+
+// Delete class
+router.delete(
+    "/:id",
+
+    /* authorizeRoles("admin", "teacher"), */
+    async (req, res) => {
+        try {
+            const { id: classId } = parseRequest(classIdParamSchema, req.params);
+
+            const deletedRows = await db
+                .delete(classes)
+                .where(eq(classes.id, classId))
+                .returning({ id: classes.id });
+
+            if (deletedRows.length === 0)
+                return res.status(404).json({ error: "Class not found" });
+
+            res.status(200).json({ message: "Class deleted" });
+        } catch (error) {
+            console.error("DELETE /classes/:id error:", error);
+            res.status(500).json({ error: "Failed to delete class" });
+        }
+    }
+);
 
 export default router;
