@@ -20,12 +20,15 @@ const app = express();
 const PORT = 8000;
 
 app.use(
-  cors({
-    origin: process.env.FRONTEND_URL, // React app URL
-    methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed HTTP methods
-    credentials: true, // allow cookies
-  })
+    cors({
+        origin: [
+            "http://localhost:3000",
+            "https://classroom-frontend-iuob-728sgnuz.vercel.app",
+        ],
+        credentials: true,
+    })
 );
+
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
