@@ -22,13 +22,13 @@ const PORT = 8000;
 app.use(
     cors({
         origin: [
-            "http:/localhost:5173",
-            "https://classroom-frontend-iuob-728sgnuz.vercel.app",
+            process.env.FRONTEND_URL!, // local dev URL from .env
+            "https://classroom-frontend-iuob-d3jr6520d.vercel.app", // Vercel deployed URL
         ],
-        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE"], // allowed HTTP methods
+        credentials: true, // allow cookies
     })
 );
-
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
