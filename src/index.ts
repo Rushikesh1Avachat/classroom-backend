@@ -22,10 +22,10 @@ const PORT = 8000;
 app.use(
     cors({
         origin: [
-            process.env.FRONTEND_URL!, // local dev URL from .env
-            "https://classroom-frontend-iuob-d3jr6520d.vercel.app", // Vercel deployed URL
+            process.env.FRONTEND_URL!,       // local dev
+            process.env.FRONTEND_VERCEL_URL! // deployed frontend
         ],
-        methods: ["GET", "POST", "PUT", "DELETE"], // allowed HTTP methods
+        methods: ["GET", "POST", "PUT", "DELETE"],
         credentials: true, // allow cookies
     })
 );
