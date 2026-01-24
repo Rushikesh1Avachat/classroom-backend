@@ -6,11 +6,7 @@ import * as schema from "../db/schema/auth.js";
 
 export const auth = betterAuth({
     secret: process.env.BETTER_AUTH_SECRET!,
-    // Change this to include both URLs
-    trustedOrigins: [
-        process.env.FRONTEND_URL!,
-        process.env.FRONTEND_VERCEL_URL!
-    ],
+    trustedOrigins: [process.env.FRONTEND_URL!],
     database: drizzleAdapter(db, {
         provider: "pg",
         schema,
@@ -24,12 +20,12 @@ export const auth = betterAuth({
                 type: "string",
                 required: true,
                 defaultValue: "student",
-                input: true,
+                input: true, // Allow role to be set during registration
             },
             imageCldPubId: {
                 type: "string",
                 required: false,
-                input: true,
+                input: true, // Allow imageCldPubId to be set during registration
             },
         },
     },
