@@ -41,8 +41,8 @@ app.use(
     })
 );
 
-// Handle preflight requests for API routes
-app.options("/api/*", cors());
+// Safe preflight handling for all API routes
+app.options("/api/:path(*)", cors());
 
 /* =========================
    ✅ BODY PARSER
