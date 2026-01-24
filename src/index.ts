@@ -19,26 +19,13 @@ import { auth } from "./lib/auth.js";
 const app = express();
 const PORT = 8000;
 
-const allowedOrigins = [
-    "http://localhost:5173",
-    "https://classroom-frontend-ksej2u18r-rushikesh-avachat-s-react-and-vite.vercel.app",
-];
-
 app.use(
     cors({
-        origin: function (origin, callback) {
-            if (!origin) return callback(null, true); // allow server-to-server
-            if (allowedOrigins.includes(origin)) {
-                callback(null, true);
-            } else {
-                callback(new Error("Not allowed by CORS"));
-            }
-        },
-        credentials: true,
-        methods: ["GET", "POST", "PUT", "DELETE"],
+        origin: process.env.FRONTEND_URL, // React app URL
+        methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed HTTP methods
+        credentials: true, // allow cookies
     })
 );
-
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
