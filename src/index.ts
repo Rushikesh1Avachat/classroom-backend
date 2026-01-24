@@ -1,6 +1,6 @@
-import('apminsight')
+import("apminsight")
     .then(({ default: AgentAPI }) => AgentAPI.config())
-    .catch(() => console.log('APM not available in this environment'));
+    .catch(() => console.log("APM not available in this environment"));
 
 import cors from "cors";
 import express from "express";
@@ -16,29 +16,39 @@ import enrollmentsRouter from "./routes/enrollments.js";
 import { auth } from "./lib/auth.js";
 
 const app = express();
-
-// Use Render/Vercel port
 const PORT = process.env.PORT || 8000;
 
-// CORS setup
+/* =========================
+   ✅ CORS (FIXED)
+========================= */
 app.use(
     cors({
         origin: [
-            process.env.FRONTEND_URL!,
-            process.env.FRONTEND_VERCEL_URL!
+            "http://localhost:5173",
+            "https://classroom-frontend-hdgpikxlw.vercel.app",
         ],
-        methods: ["GET", "POST", "PUT", "DELETE"],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true,
     })
 );
 
-// Auth route
-app.all("/api/auth/*splat", toNodeHandler(auth));
+// ✅ Handle preflight
+app.options("*", cors());
 
-// JSON body parsing
+/* =========================
+   ✅ BODY PARSER (MUST COME EARLY)
+========================= */
 app.use(express.json());
 
-// Routers
+/* =========================
+   ✅ AUTH ROUTE
+========================= */
+app.all("/api/auth/*", toNodeHandler(auth));
+
+/* =========================
+   ✅ API ROUTES
+========================= */
 app.use("/api/subjects", subjectsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/classes", classesRouter);
@@ -46,12 +56,13 @@ app.use("/api/departments", departmentsRouter);
 app.use("/api/stats", statsRouter);
 app.use("/api/enrollments", enrollmentsRouter);
 
-// Test endpoint
-app.get("/", (req, res) => {
+/* =========================
+   ✅ HEALTH CHECK
+========================= */
+app.get("/", (_req, res) => {
     res.send("Backend server is running!");
 });
 
-// Start server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
