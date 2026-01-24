@@ -1,395 +1,281 @@
 import express from "express";
 import { eq, ilike, or, and, desc, sql, getTableColumns } from "drizzle-orm";
 
-import { db } from "../db";
-import { classes, departments, enrollments, subjects, user } from "../db/schema";
-import {
-    subjectCreateSchema,
-    subjectIdParamSchema,
-    subjectItemsQuerySchema,
-    subjectUpdateSchema,
-    subjectUsersQuerySchema,
-} from "../validation/subjects";
-import { getSubjectByCode, getSubjectById } from "../controllers/subjects";
-import { getDepartmentById } from "../controllers/departments";
-import { parseRequest } from "../lib/validation";
-// import { authenticate, authorizeRoles } from "../middleware/auth-middleware";
+import { db } from "../db/index.js";
+import { classes, departments, enrollments, subjects, user } from "../db/schema/index.js";
 
 const router = express.Router();
 
 // Get all subjects with optional search, department filter, and pagination
-router.get(
-    "/",
+router.get("/", async (req, res) => {
+  try {
+    const { search, department, page = 1, limit = 10 } = req.query;
 
-    /* authorizeRoles("admin", "teacher", "student"), */
-    async (req, res) => {
-        try {
-            const { search, department, page = 1, limit = 10 } = req.query;
+    const currentPage = Math.max(1, +page);
+    const limitPerPage = Math.max(1, +limit);
+    const offset = (currentPage - 1) * limitPerPage;
 
-            const currentPage = Math.max(1, +page);
-            const limitPerPage = Math.max(1, +limit);
-            const offset = (currentPage - 1) * limitPerPage;
+    const filterConditions = [];
 
-            const filterConditions = [];
+    if (search) {
+      filterConditions.push(
+        or(
+          ilike(subjects.name, `%${search}%`),
+          ilike(subjects.code, `%${search}%`)
+        )
+      );
+    }
 
-            if (search) {
-                filterConditions.push(
-                    or(
-                        ilike(subjects.name, `%${search}%`),
-                        ilike(subjects.code, `%${search}%`)
-                    )
-                );
-            }
+    if (department) {
+      filterConditions.push(ilike(departments.name, `%${department}%`));
+    }
 
-            if (department) {
-                filterConditions.push(ilike(departments.name, `%${department}%`));
-            }
+    const whereClause =
+      filterConditions.length > 0 ? and(...filterConditions) : undefined;
 
-            const whereClause =
-                filterConditions.length > 0 ? and(...filterConditions) : undefined;
+    // Count query MUST include the join
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(subjects)
+      .leftJoin(departments, eq(subjects.departmentId, departments.id))
+      .where(whereClause);
 
-            // Count query MUST include the join
-            const countResult = await db
-                .select({ count: sql<number>`count(*)` })
-                .from(subjects)
-                .leftJoin(departments, eq(subjects.departmentId, departments.id))
-                .where(whereClause);
+    const totalCount = countResult[0]?.count ?? 0;
 
-            const totalCount = countResult[0]?.count ?? 0;
+    // Data query
+    const subjectsList = await db
+      .select({
+        ...getTableColumns(subjects),
+        department: {
+          ...getTableColumns(departments),
+        },
+      })
+      .from(subjects)
+      .leftJoin(departments, eq(subjects.departmentId, departments.id))
+      .where(whereClause)
+      .orderBy(desc(subjects.createdAt))
+      .limit(limitPerPage)
+      .offset(offset);
 
-            // Data query
-            const subjectsList = await db
-                .select({
-                    ...getTableColumns(subjects),
-                    department: {
-                        ...getTableColumns(departments),
-                    },
-                })
-                .from(subjects)
-                .leftJoin(departments, eq(subjects.departmentId, departments.id))
-                .where(whereClause)
-                .orderBy(desc(subjects.createdAt))
-                .limit(limitPerPage)
-                .offset(offset);
-
-            res.status(200).json({
-                data: subjectsList,
-                pagination: {
-                    page: currentPage,
-                    limit: limitPerPage,
-                    total: totalCount,
-                    totalPages: Math.ceil(totalCount / limitPerPage),
-                },
-            });
-        } catch (error) {
-            console.error("GET /subjects error:", error);
-            res.status(500).json({ error: "Failed to fetch subjects" });
-        }
+    res.status(200).json({
+      data: subjectsList,
+      pagination: {
+        page: currentPage,
+        limit: limitPerPage,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitPerPage),
+      },
     });
+  } catch (error) {
+    console.error("GET /subjects error:", error);
+    res.status(500).json({ error: "Failed to fetch subjects" });
+  }
+});
 
-// Get a single subject by ID
-router.get(
-    "/:id",
-    // authenticate,
-    /* authorizeRoles("admin", "teacher", "student"), */
-    async (req, res) => {
-        try {
-            const { id: subjectId } = parseRequest(subjectIdParamSchema, req.params);
+router.post("/", async (req, res) => {
+  try {
+    const { departmentId, name, code, description } = req.body;
 
-            const subject = await getSubjectById(subjectId);
+    const [createdSubject] = await db
+      .insert(subjects)
+      .values({ departmentId, name, code, description })
+      .returning({ id: subjects.id });
 
-            if (!subject) {
-                return res.status(404).json({ error: "Subject not found" });
-            }
+    if (!createdSubject) throw Error;
 
-            const classesCount = await db
-                .select({ count: sql<number>`count(*)` })
-                .from(classes)
-                .where(eq(classes.subjectId, subjectId));
+    res.status(201).json({ data: createdSubject });
+  } catch (error) {
+    console.error("POST /subjects error:", error);
+    res.status(500).json({ error: "Failed to create subject" });
+  }
+});
 
-            res.status(200).json({
-                data: {
-                    subject,
-                    totals: {
-                        classes: classesCount[0]?.count ?? 0,
-                    },
-                },
-            });
-        } catch (error) {
-            console.error("GET /subjects/:id error:", error);
-            res.status(500).json({ error: "Failed to fetch subject details" });
-        }
+// Get subject details with counts
+router.get("/:id", async (req, res) => {
+  try {
+    const subjectId = Number(req.params.id);
+
+    if (!Number.isFinite(subjectId)) {
+      return res.status(400).json({ error: "Invalid subject id" });
+    }
+
+    const [subject] = await db
+      .select({
+        ...getTableColumns(subjects),
+        department: {
+          ...getTableColumns(departments),
+        },
+      })
+      .from(subjects)
+      .leftJoin(departments, eq(subjects.departmentId, departments.id))
+      .where(eq(subjects.id, subjectId));
+
+    if (!subject) {
+      return res.status(404).json({ error: "Subject not found" });
+    }
+
+    const classesCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(classes)
+      .where(eq(classes.subjectId, subjectId));
+
+    res.status(200).json({
+      data: {
+        subject,
+        totals: {
+          classes: classesCount[0]?.count ?? 0,
+        },
+      },
     });
-
-// Create a new subject
-router.post(
-    "/",
-    // authenticate,
-    /* authorizeRoles("admin", "teacher"), */
-    async (req, res) => {
-        try {
-            const { departmentId, name, code, description } = parseRequest(
-                subjectCreateSchema,
-                req.body
-            );
-
-            const department = await getDepartmentById(departmentId);
-
-            if (!department)
-                return res.status(404).json({ error: "Department not found" });
-
-            const existingSubject = await getSubjectByCode(code);
-            if (existingSubject)
-                return res.status(409).json({ error: "Subject code already exists" });
-
-            const [createdSubject] = await db
-                .insert(subjects)
-                .values({
-                    departmentId,
-                    name,
-                    code,
-                    description: description ?? null,
-                })
-                .returning({ id: subjects.id });
-
-            if (!createdSubject)
-                return res.status(500).json({ error: "Failed to create subject" });
-
-            const subject = await getSubjectById(createdSubject.id);
-
-            res.status(201).json({ data: subject });
-        } catch (error) {
-            console.error("POST /subjects error:", error);
-            res.status(500).json({ error: "Failed to create subject" });
-        }
-    });
-
-// Update a subject by ID
-router.put(
-    "/:id",
-    // authenticate,
-    /* authorizeRoles("admin", "teacher"), */
-    async (req, res) => {
-        try {
-            const { id: subjectId } = parseRequest(subjectIdParamSchema, req.params);
-
-            const existingSubjectById = await getSubjectById(subjectId);
-            if (!existingSubjectById)
-                return res.status(404).json({ error: "Subject not found" });
-
-            const { departmentId, name, code, description } = parseRequest(
-                subjectUpdateSchema,
-                req.body
-            );
-
-            const updateValues: Record<string, unknown> = {};
-
-            if (departmentId) {
-                const department = await getDepartmentById(departmentId);
-
-                if (!department)
-                    return res.status(404).json({ error: "Department not found" });
-
-                updateValues.departmentId = departmentId;
-            }
-
-            if (code) {
-                const existingSubjectWithCode = await getSubjectByCode(code);
-
-                if (existingSubjectWithCode && existingSubjectWithCode.id !== subjectId)
-                    return res.status(409).json({ error: "Subject code already exists" });
-
-                updateValues.code = code;
-            }
-
-            for (const [key, value] of Object.entries({ name, description })) {
-                if (value) updateValues[key] = value;
-            }
-
-            await db
-                .update(subjects)
-                .set(updateValues)
-                .where(eq(subjects.id, subjectId));
-
-            const subject = await getSubjectById(subjectId);
-
-            res.status(200).json({ data: subject });
-        } catch (error) {
-            console.error("PUT /subjects/:id error:", error);
-            res.status(500).json({ error: "Failed to update subject" });
-        }
-    });
+  } catch (error) {
+    console.error("GET /subjects/:id error:", error);
+    res.status(500).json({ error: "Failed to fetch subject details" });
+  }
+});
 
 // List classes in a subject with pagination
-router.get(
-    "/:id/classes",
-    // authenticate,
-    /* authorizeRoles("admin", "teacher", "student"), */
-    async (req, res) => {
-        try {
-            const { id: subjectId } = parseRequest(subjectIdParamSchema, req.params);
-            const { page = 1, limit = 10 } = parseRequest(
-                subjectItemsQuerySchema,
-                req.query
-            );
+router.get("/:id/classes", async (req, res) => {
+  try {
+    const subjectId = Number(req.params.id);
+    const { page = 1, limit = 10 } = req.query;
 
-            const currentPage = Math.max(1, +page);
-            const limitPerPage = Math.max(1, +limit);
-            const offset = (currentPage - 1) * limitPerPage;
+    if (!Number.isFinite(subjectId)) {
+      return res.status(400).json({ error: "Invalid subject id" });
+    }
 
-            const countResult = await db
-                .select({ count: sql<number>`count(*)` })
-                .from(classes)
-                .where(eq(classes.subjectId, subjectId));
+    const currentPage = Math.max(1, +page);
+    const limitPerPage = Math.max(1, +limit);
+    const offset = (currentPage - 1) * limitPerPage;
 
-            const totalCount = countResult[0]?.count ?? 0;
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(classes)
+      .where(eq(classes.subjectId, subjectId));
 
-            const classesList = await db
-                .select({
-                    ...getTableColumns(classes),
-                    teacher: {
-                        ...getTableColumns(user),
-                    },
-                })
-                .from(classes)
-                .leftJoin(user, eq(classes.teacherId, user.id))
-                .where(eq(classes.subjectId, subjectId))
-                .orderBy(desc(classes.createdAt))
-                .limit(limitPerPage)
-                .offset(offset);
+    const totalCount = countResult[0]?.count ?? 0;
 
-            res.status(200).json({
-                data: classesList,
-                pagination: {
-                    page: currentPage,
-                    limit: limitPerPage,
-                    total: totalCount,
-                    totalPages: Math.ceil(totalCount / limitPerPage),
-                },
-            });
-        } catch (error) {
-            console.error("GET /subjects/:id/classes error:", error);
-            res.status(500).json({ error: "Failed to fetch subject classes" });
-        }
+    const classesList = await db
+      .select({
+        ...getTableColumns(classes),
+        teacher: {
+          ...getTableColumns(user),
+        },
+      })
+      .from(classes)
+      .leftJoin(user, eq(classes.teacherId, user.id))
+      .where(eq(classes.subjectId, subjectId))
+      .orderBy(desc(classes.createdAt))
+      .limit(limitPerPage)
+      .offset(offset);
+
+    res.status(200).json({
+      data: classesList,
+      pagination: {
+        page: currentPage,
+        limit: limitPerPage,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitPerPage),
+      },
     });
+  } catch (error) {
+    console.error("GET /subjects/:id/classes error:", error);
+    res.status(500).json({ error: "Failed to fetch subject classes" });
+  }
+});
 
 // List users in a subject by role with pagination
-router.get(
-    "/:id/users",
-    // authenticate,
-    /* authorizeRoles("admin", "teacher", "student"), */
-    async (req, res) => {
-        try {
-            const { id: subjectId } = parseRequest(subjectIdParamSchema, req.params);
-            const { role, page = 1, limit = 10 } = parseRequest(
-                subjectUsersQuerySchema,
-                req.query
-            );
+router.get("/:id/users", async (req, res) => {
+  try {
+    const subjectId = Number(req.params.id);
+    const { role, page = 1, limit = 10 } = req.query;
 
-            const currentPage = Math.max(1, +page);
-            const limitPerPage = Math.max(1, +limit);
-            const offset = (currentPage - 1) * limitPerPage;
+    if (!Number.isFinite(subjectId)) {
+      return res.status(400).json({ error: "Invalid subject id" });
+    }
 
-            const baseSelect = {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                emailVerified: user.emailVerified,
-                image: user.image,
-                role: user.role,
-                imageCldPubId: user.imageCldPubId,
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt,
-            };
+    if (role !== "teacher" && role !== "student") {
+      return res.status(400).json({ error: "Invalid role" });
+    }
 
-            const groupByFields = [
-                user.id,
-                user.name,
-                user.email,
-                user.emailVerified,
-                user.image,
-                user.role,
-                user.imageCldPubId,
-                user.createdAt,
-                user.updatedAt,
-            ];
+    const currentPage = Math.max(1, +page);
+    const limitPerPage = Math.max(1, +limit);
+    const offset = (currentPage - 1) * limitPerPage;
 
-            const countResult =
-                role === "teacher"
-                    ? await db
-                        .select({ count: sql<number>`count(distinct ${user.id})` })
-                        .from(user)
-                        .leftJoin(classes, eq(user.id, classes.teacherId))
-                        .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)))
-                    : await db
-                        .select({ count: sql<number>`count(distinct ${user.id})` })
-                        .from(user)
-                        .leftJoin(enrollments, eq(user.id, enrollments.studentId))
-                        .leftJoin(classes, eq(enrollments.classId, classes.id))
-                        .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)));
+    const baseSelect = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      emailVerified: user.emailVerified,
+      image: user.image,
+      role: user.role,
+      imageCldPubId: user.imageCldPubId,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
 
-            const totalCount = countResult[0]?.count ?? 0;
+    const groupByFields = [
+      user.id,
+      user.name,
+      user.email,
+      user.emailVerified,
+      user.image,
+      user.role,
+      user.imageCldPubId,
+      user.createdAt,
+      user.updatedAt,
+    ];
 
-            const usersList =
-                role === "teacher"
-                    ? await db
-                        .select(baseSelect)
-                        .from(user)
-                        .leftJoin(classes, eq(user.id, classes.teacherId))
-                        .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)))
-                        .groupBy(...groupByFields)
-                        .orderBy(desc(user.createdAt))
-                        .limit(limitPerPage)
-                        .offset(offset)
-                    : await db
-                        .select(baseSelect)
-                        .from(user)
-                        .leftJoin(enrollments, eq(user.id, enrollments.studentId))
-                        .leftJoin(classes, eq(enrollments.classId, classes.id))
-                        .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)))
-                        .groupBy(...groupByFields)
-                        .orderBy(desc(user.createdAt))
-                        .limit(limitPerPage)
-                        .offset(offset);
+    const countResult =
+      role === "teacher"
+        ? await db
+            .select({ count: sql<number>`count(distinct ${user.id})` })
+            .from(user)
+            .leftJoin(classes, eq(user.id, classes.teacherId))
+            .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)))
+        : await db
+            .select({ count: sql<number>`count(distinct ${user.id})` })
+            .from(user)
+            .leftJoin(enrollments, eq(user.id, enrollments.studentId))
+            .leftJoin(classes, eq(enrollments.classId, classes.id))
+            .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)));
 
-            res.status(200).json({
-                data: usersList,
-                pagination: {
-                    page: currentPage,
-                    limit: limitPerPage,
-                    total: totalCount,
-                    totalPages: Math.ceil(totalCount / limitPerPage),
-                },
-            });
-        } catch (error) {
-            console.error("GET /subjects/:id/users error:", error);
-            res.status(500).json({ error: "Failed to fetch subject users" });
-        }
+    const totalCount = countResult[0]?.count ?? 0;
+
+    const usersList =
+      role === "teacher"
+        ? await db
+            .select(baseSelect)
+            .from(user)
+            .leftJoin(classes, eq(user.id, classes.teacherId))
+            .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)))
+            .groupBy(...groupByFields)
+            .orderBy(desc(user.createdAt))
+            .limit(limitPerPage)
+            .offset(offset)
+        : await db
+            .select(baseSelect)
+            .from(user)
+            .leftJoin(enrollments, eq(user.id, enrollments.studentId))
+            .leftJoin(classes, eq(enrollments.classId, classes.id))
+            .where(and(eq(user.role, role), eq(classes.subjectId, subjectId)))
+            .groupBy(...groupByFields)
+            .orderBy(desc(user.createdAt))
+            .limit(limitPerPage)
+            .offset(offset);
+
+    res.status(200).json({
+      data: usersList,
+      pagination: {
+        page: currentPage,
+        limit: limitPerPage,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitPerPage),
+      },
     });
-
-// Delete a subject by ID
-router.delete(
-    "/:id",
-    // authenticate,
-    /* authorizeRoles("admin", "teacher"), */
-    async (req, res) => {
-        try {
-            const { id: subjectId } = parseRequest(subjectIdParamSchema, req.params);
-
-            const deletedRows = await db
-                .delete(subjects)
-                .where(eq(subjects.id, subjectId))
-                .returning({ id: subjects.id });
-
-            if (deletedRows.length === 0)
-                return res.status(404).json({ error: "Subject not found" });
-
-            res.status(200).json({ message: "Subject deleted" });
-        } catch (error) {
-            console.error("DELETE /subjects/:id error:", error);
-            res.status(500).json({ error: "Failed to delete subject" });
-        }
-    });
+  } catch (error) {
+    console.error("GET /subjects/:id/users error:", error);
+    res.status(500).json({ error: "Failed to fetch subject users" });
+  }
+});
 
 export default router;
-

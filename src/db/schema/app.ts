@@ -9,7 +9,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
+import { user } from "./auth";
 
 const timestamps = {
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -110,7 +110,7 @@ export const subjectsRelations = relations(subjects, ({ one, many }) => ({
     fields: [subjects.departmentId],
     references: [departments.id],
   }),
-  // classes: many(classes),
+  classes: many(classes),
 }));
 
 export const classesRelations = relations(classes, ({ one, many }) => ({
