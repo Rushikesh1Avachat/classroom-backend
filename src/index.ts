@@ -22,7 +22,7 @@ const PORT = 8000;
 app.use(
     cors({
         origin: [
-            "http://localhost:3000",
+            "http:/localhost:5173",
             "https://classroom-frontend-iuob-728sgnuz.vercel.app",
         ],
         credentials: true,
